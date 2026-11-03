@@ -1,0 +1,19 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# garante que /api e /uploads cheguem à função, com a rota original em ?r=
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api?r=:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/uploads/*"
+  to = "/.netlify/functions/api?r=uploads/:splat"
+  status = 200
+  force = true
