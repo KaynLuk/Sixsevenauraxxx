@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e110a">
+<title>Grimório da Mesa — Vida &amp; Sanidade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- fontes carregam sem bloquear a página (se o Google Fonts estiver fora, usa fontes do sistema) -->
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;800&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="viga" aria-hidden="true"></div>
+<div class="canto tl" aria-hidden="true"></div>
+<div class="canto tr" aria-hidden="true"></div>
+<div class="canto bl" aria-hidden="true"></div>
+<div class="canto br" aria-hidden="true"></div>
+<div id="fagulhas" aria-hidden="true"></div>
+<main id="app"><p class="carregando">Acendendo as tochas…</p></main>
+<div id="modais"></div>
+<div id="aviso" role="alert" aria-live="assertive"></div>
+<div id="toasts" aria-live="polite"></div>
+<input type="file" id="fileFoto" accept="image/jpeg,image/png,image/webp" hidden>
+<noscript><p style="padding:2rem;color:#e3cd9d">Ative o JavaScript para usar o grimório.</p></noscript>
+<script>
+// Rede de segurança: se o app não iniciar em 6 s, explica o motivo em vez de ficar "carregando" para sempre.
+setTimeout(function () {
+  if (window.__appOk) return;
+  var a = document.getElementById('app');
+  a.innerHTML = '<section class="centro"><div class="painel"><h2>Não consegui carregar</h2>' +
+    '<p>Confira sua conexão e tente de novo.</p>' +
+    '<p>Se você é o mestre: o site só funciona publicado no <b>Netlify</b> com a pasta <code>netlify/functions</code> incluída ' +
+    '(não abre direto pelo arquivo index.html). Veja o LEIA-ME.</p>' +
+    '<div class="acoes"><button class="btn sangue" onclick="location.reload()">Tentar de novo</button></div></div></section>';
+}, 6000);
+</script>
+<script src="js/app.js"></script>
+</body>
+</html>
