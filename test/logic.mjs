@@ -33,6 +33,7 @@ console.log('\nLogin');
 t('status mostra mestre configurado (senha fixa)', (await M.req('GET', '/api/status')).d.mestre_configurado === true);
 t('rota protegida sem login → 401', (await new Cli().req('GET', '/api/characters')).s === 401);
 t('mestre entra com a senha mestre123', (await M.req('POST', '/api/login/mestre', { senha: 'mestre123' })).s === 200);
+t('primeiro sync de um banco novo (rev 0) já traz os dados', await (async () => { const f = (await M.req('GET', '/api/sync')).d; return f.rev === 0 && !!f.dados?.combate && !!f.dados?.mesa; })());
 t('senha errada do mestre → 401', (await new Cli('9.9.9.9').req('POST', '/api/login/mestre', { senha: 'outra' })).s === 401);
 const lista = (await new Cli().req('GET', '/api/public/characters')).d;
 t('lista pública com 2 personagens do seed, sem dados sensíveis', lista.length === 2 && !('senha_hash' in lista[0]) && !('vida_atual' in lista[0]));

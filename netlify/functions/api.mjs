@@ -3220,7 +3220,7 @@ async function rotear(req, context) {
     }
   }
   if (a === "sync" && m === "GET") {
-    const ev = url.searchParams.get("ev"), rev = Number(url.searchParams.get("rev"));
+    const ev = url.searchParams.get("ev"), rev = url.searchParams.has("rev") ? Number(url.searchParams.get("rev")) : null;
     const eventos = ev === null ? [] : db.hist.filter((h) => h.id > Number(ev) && (u.r === "mestre" || h.character_id === u.c)).slice(-100).reverse().map((h) => comNome(db, h));
     const novo = rev !== db.rev;
     return json(200, { rev: db.rev, lastEv: db.seq.h, eventos, ...novo ? { dados: { chars: visiveis(db, u), config: db.config, ...u.r === "mestre" ? dadosMestre(db) : dadosJogador(db, u) } } : {} });
