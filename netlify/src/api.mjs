@@ -3,6 +3,8 @@
 import { getStore } from '@netlify/blobs';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
+import { HttpError, erro, int, txt, pub, comNome, aplicarAjuste } from './nucleo.mjs';
+import { garantir, rotasMesa, dadosMestre, dadosJogador, limparChar } from './mesa.mjs';
 
 const DUMMY = bcrypt.hashSync('x', 10);
 const KEY = 'banco';
@@ -10,8 +12,6 @@ const SESSAO_MS = 12 * 3600 * 1000;
 const LOGIN_MAX = () => Number(process.env.LOGIN_MAX) || 10;
 const store = () => globalThis.__RPG_STORE__ || getStore({ name: 'grimorio', consistency: 'strong' });
 
-class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
-const erro = (status, msg) => { throw new HttpError(status, msg); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- banco (um documento JSON com controle de concorrência por etag) ----------
@@ -27,12 +27,14 @@ async function load() {
   const s = store();
   let r = await s.getWithMetadata(KEY, { type: 'json' });
   if (!r) { await s.setJSON(KEY, novoDb(), { onlyIfNew: true }); r = await s.getWithMetadata(KEY, { type: 'json' }); }
+  garantir(r.data); // bancos antigos ganham os campos das ferramentas do mestre
   return r;
 }
 async function mutate(fn) {
   for (let i = 0; i < 8; i++) {
     const { data, etag } = await load();
     const res = fn(data); // pode lançar HttpError: nada é gravado
+    data.rev = (data.rev || 0) + 1; // os clientes só baixam os dados grandes quando a revisão muda
     const w = await store().setJSON(KEY, data, { onlyIfMatch: etag });
     if (w.modified) return res;
     await sleep(30 + Math.random() * 70);
@@ -58,19 +60,9 @@ function verify(db, tok) {
 const cookies = (h = '') => Object.fromEntries(h.split(';').map((s) => s.trim().split(/=(.*)/s).slice(0, 2)).filter((x) => x[0]));
 
 // ---------- domínio ----------
-function estados(c) {
-  const e = [];
-  if (c.vida_atual === 0) e.push('caido'); else if (c.vida_atual / c.vida_max < 0.3) e.push('ferido');
-  if (c.sanidade_atual === 0) e.push('enlouquecido'); else if (c.sanidade_atual / c.sanidade_max < 0.3) e.push('abalado');
-  return e;
-}
-const pub = (c) => ({ id: c.id, nome: c.nome, foto_url: c.foto_url, vida_atual: c.vida_atual, vida_max: c.vida_max, sanidade_atual: c.sanidade_atual, sanidade_max: c.sanidade_max, estados: estados(c) });
 const ordem = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
-const int = (v, min, max) => { const n = typeof v === 'string' && /^-?\d+$/.test(v.trim()) ? Number(v) : v; return Number.isInteger(n) && n >= min && n <= max ? n : null; };
-const txt = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const senhaOk = (s) => typeof s === 'string' && s.length >= 4 && s.length <= 72;
 const visiveis = (db, u) => (u.r === 'mestre' ? db.chars : db.chars.filter((c) => c.id === u.c || db.config.jogadores_veem_outros)).slice().sort(ordem).map(pub);
-const comNome = (db, h) => ({ ...h, nome: db.chars.find((c) => c.id === h.character_id)?.nome || '?' });
 const json = (status, obj, headers = {}) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers } });
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 function tipoReal(b) {
@@ -173,11 +165,14 @@ async function rotear(req, context) {
   }
   // consulta periódica (substitui o tempo real): estado atual + eventos novos desde "ev"
   if (a === 'sync' && m === 'GET') {
-    const ev = url.searchParams.get('ev');
+    const ev = url.searchParams.get('ev'), rev = Number(url.searchParams.get('rev'));
     const eventos = ev === null ? [] : db.hist.filter((h) => h.id > Number(ev) && (u.r === 'mestre' || h.character_id === u.c)).slice(-100).reverse().map((h) => comNome(db, h));
-    return json(200, { chars: visiveis(db, u), config: db.config, eventos, lastEv: db.seq.h });
+    const novo = rev !== db.rev; // só manda o estado completo quando algo mudou
+    return json(200, { rev: db.rev, lastEv: db.seq.h, eventos, ...(novo ? { dados: { chars: visiveis(db, u), config: db.config, ...(u.r === 'mestre' ? dadosMestre(db) : dadosJogador(db, u)) } } : {}) });
   }
   if (a === 'eventos' && m === 'GET') { soMestre(); return json(200, db.hist.slice(-100).reverse().map((h) => comNome(db, h))); }
+  const mesa = await rotasMesa({ seg, m, u, db, corpo: () => corpo(req), mutate, json });
+  if (mesa) return mesa;
 
   if (a === 'characters') {
     if (!b && m === 'GET') return json(200, visiveis(db, u));
@@ -193,7 +188,7 @@ async function rotear(req, context) {
       const hash = bcrypt.hashSync(body.senha, 10);
       const novo = await mutate((d) => {
         if (d.chars.some((x) => x.nome.toLowerCase() === nome.toLowerCase())) erro(409, 'Já existe um personagem com esse nome.');
-        const ch = { id: ++d.seq.c, nome, senha_hash: hash, foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, criado_em: new Date().toISOString() };
+        const ch = { id: ++d.seq.c, nome, senha_hash: hash, foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, itens: [], criado_em: new Date().toISOString() };
         d.chars.push(ch); return pub(ch);
       });
       return json(201, novo);
@@ -218,7 +213,7 @@ async function rotear(req, context) {
       }
       if (!c && m === 'DELETE') {
         soMestre(); const foto = find(db).foto_url;
-        await mutate((d) => { d.chars = d.chars.filter((x) => x.id !== id); d.hist = d.hist.filter((h) => h.character_id !== id); });
+        await mutate((d) => { limparChar(d, id); d.chars = d.chars.filter((x) => x.id !== id); d.hist = d.hist.filter((h) => h.character_id !== id); });
         await apagaFoto(foto);
         return json(200, { ok: true });
       }
@@ -236,16 +231,7 @@ async function rotear(req, context) {
         if (!['dano', 'cura'].includes(tipo)) erro(400, 'Tipo inválido.');
         if (valor === null) erro(400, 'Informe um valor inteiro entre 1 e 9999.');
         const descricao = txt(body.descricao, 300), autor = u.r === 'mestre' ? 'mestre' : 'jogador';
-        return json(200, await mutate((d) => {
-          const ch = find(d); if (!ch) erro(404, 'Personagem não encontrado.');
-          const antes = ch[atributo + '_atual'], max = ch[atributo + '_max'];
-          const depois = Math.max(0, Math.min(max, antes + (tipo === 'dano' ? -valor : valor)));
-          if (depois === antes) { const nm = atributo === 'vida' ? 'A vida' : 'A sanidade'; erro(400, tipo === 'dano' ? `${nm} já está em zero.` : `${nm} já está no máximo.`); }
-          ch[atributo + '_atual'] = depois;
-          const h = { id: ++d.seq.h, character_id: id, atributo, delta: depois - antes, descricao, antes, depois, autor, criado_em: new Date().toISOString() };
-          d.hist.push(h); if (d.hist.length > 1500) d.hist.splice(0, d.hist.length - 1500);
-          return { personagem: pub(ch), evento: comNome(d, h) };
-        }));
+        return json(200, await mutate((d) => aplicarAjuste(d, id, atributo, tipo, valor, descricao, autor)));
       }
       if (c === 'foto' && m === 'POST') {
         let file; try { file = (await req.formData()).get('foto'); } catch { erro(400, 'Falha no envio.'); }

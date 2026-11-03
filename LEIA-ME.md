@@ -13,6 +13,18 @@ Suba a pasta para um repositório no GitHub, no Netlify use **Add new project �
 
 Ou, com o Netlify CLI: `npm i -g netlify-cli`, `netlify login`, `netlify deploy --prod`.
 
+## Painel do Mestre (Mesa do Mestre)
+Sete abas, no estilo madeira, pergaminho e ouro (no celular o menu vira uma barra de abas rolável):
+- **Combate:** ordem dos turnos com iniciativa (rolada ou digitada), rodada, "Próximo turno" (monstros caídos perdem a vez), dano e cura em qualquer combatente, efeitos ativos que **causam dano, curam e acabam sozinhos a cada turno** (veneno que empilha, sangramento que cessa ao curar), "vida escondida dos jogadores" (eles veem só Ileso, Ferido ou Crítico) e calculadora de dano com crítico, vantagem e desvantagem e botão "Aplicar no alvo".
+- **Jogadores:** fichas com vida e sanidade, ajustes rápidos, foto, histórico, contas (senha), e quem vê quem.
+- **Dados:** d4 a d100, expressões como `2d6+3`, vantagem/desvantagem, crítico ×2/×3, ataques prontos tirados do bestiário e dos itens, histórico. Só o mestre vê.
+- **Monstros:** bestiário com busca e filtros (vida, armadura, bônus de iniciativa, dado de ataque, habilidades, notas); "Invocar no combate" já numera (Goblin 1, 2, 3).
+- **Efeitos:** criador de status (dano/cura por turno, buff, controle, duração, acumula, termina ao curar, visível aos jogadores) e aplicação em quem estiver no combate.
+- **Itens:** cadastro (dado de dano, bônus, efeitos), entrega e recolhimento por jogador, inventário em grade (o jogador vê o próprio).
+- **Histórico e Notas:** registro da sessão com filtros (dano, cura, rolagens, combate) e notas com etiquetas.
+
+O jogador vê, na ficha, a ordem do combate (com "É a sua vez!"), os efeitos visíveis e o próprio inventário. A fonte (Grimório, Gótico ou Clássico) é escolhida no rodapé do menu. Atalhos: setas navegam entre as abas; cada aba tem endereço próprio (`#combate`, `#monstros`…).
+
 ## Personagens de exemplo
 Já vêm 2: **Eleanor Voss** (senha `eleanor123`) e **Tobias Crane** (senha `tobias123`). Exclua ou troque as senhas no painel do mestre antes de jogar de verdade.
 
@@ -28,5 +40,5 @@ Senhas com bcrypt; sessão em cookie `httpOnly` assinado, 12 h; trocar a senha d
 
 ## Desenvolvimento
 - `npm install`, `npm run build` (empacota `netlify/src/api.mjs` em `netlify/functions/api.mjs`, que é o arquivo publicado).
-- `npm test` roda os testes da lógica; `npx netlify-cli dev` simula o Netlify localmente (`node test/live.mjs http://localhost:8888`).
+- `npm run dev` abre o site em http://localhost:8899 com dados em memória (sem Netlify); `npm test` roda os testes da lógica; `npx netlify-cli dev` simula o Netlify localmente (`node test/live.mjs http://localhost:8888`).
 - Depois de editar `netlify/src/api.mjs`, rode `npm run build` antes de publicar.
