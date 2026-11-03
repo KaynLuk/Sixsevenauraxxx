@@ -2637,13 +2637,9 @@ var getStore = (input, options) => {
 
 // netlify/src/api.mjs
 var import_bcryptjs = __toESM(require_bcryptjs(), 1);
-import crypto from "node:crypto";
-var DUMMY = import_bcryptjs.default.hashSync("x", 10);
-var MESTRE_HASH = "$2a$10$LnSvZ6UZU3QVxb3BENuUlOYJRXeZ.5Rzib2LGrdkDpABfjrE6Yf8C";
-var KEY = "banco";
-var SESSAO_MS = 12 * 3600 * 1e3;
-var LOGIN_MAX = () => Number(process.env.LOGIN_MAX) || 10;
-var store = () => globalThis.__RPG_STORE__ || getStore({ name: "grimorio", consistency: "strong" });
+import crypto2 from "node:crypto";
+
+// netlify/src/nucleo.mjs
 var HttpError = class extends Error {
   constructor(status, msg) {
     super(msg);
@@ -2653,11 +2649,421 @@ var HttpError = class extends Error {
 var erro = (status, msg) => {
   throw new HttpError(status, msg);
 };
+var int = (v, min, max) => {
+  const n = typeof v === "string" && /^-?\d+$/.test(v.trim()) ? Number(v) : v;
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+};
+var txt = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
+function estados(c) {
+  const e = [];
+  if (c.vida_atual === 0) e.push("caido");
+  else if (c.vida_atual / c.vida_max < 0.3) e.push("ferido");
+  if (c.sanidade_atual === 0) e.push("enlouquecido");
+  else if (c.sanidade_atual / c.sanidade_max < 0.3) e.push("abalado");
+  return e;
+}
+var pub = (c) => ({ id: c.id, nome: c.nome, foto_url: c.foto_url, vida_atual: c.vida_atual, vida_max: c.vida_max, sanidade_atual: c.sanidade_atual, sanidade_max: c.sanidade_max, estados: estados(c) });
+var comNome = (db, h) => ({ ...h, nome: db.chars.find((c) => c.id === h.character_id)?.nome || "?" });
+function aplicarAjuste(d, id, atributo, tipo, valor, descricao, autor, tolerante = false) {
+  const ch = d.chars.find((x) => x.id === id);
+  if (!ch) erro(404, "Personagem n\xE3o encontrado.");
+  const antes = ch[atributo + "_atual"], max = ch[atributo + "_max"];
+  const depois = Math.max(0, Math.min(max, antes + (tipo === "dano" ? -valor : valor)));
+  if (depois === antes) {
+    if (tolerante) return null;
+    const nm = atributo === "vida" ? "A vida" : "A sanidade";
+    erro(400, tipo === "dano" ? `${nm} j\xE1 est\xE1 em zero.` : `${nm} j\xE1 est\xE1 no m\xE1ximo.`);
+  }
+  ch[atributo + "_atual"] = depois;
+  const h = { id: ++d.seq.h, character_id: id, atributo, delta: depois - antes, descricao, antes, depois, autor, criado_em: (/* @__PURE__ */ new Date()).toISOString() };
+  d.hist.push(h);
+  if (d.hist.length > 1500) d.hist.splice(0, d.hist.length - 1500);
+  return { personagem: pub(ch), evento: comNome(d, h) };
+}
+
+// netlify/src/mesa.mjs
+import crypto from "node:crypto";
+var agora = () => (/* @__PURE__ */ new Date()).toISOString();
+var rnd = (lados) => crypto.randomInt(1, lados + 1);
+var clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+var MONSTROS = [
+  { nome: "Goblin Saqueador", tipo: "goblin", vida_max: 12, armadura: 12, iniciativa: 2, dado_ataque: "1d6+2", habilidades: "Emboscada: ataca com vantagem quem ainda n\xE3o agiu.", notas: "", vida_escondida: false },
+  { nome: "Esqueleto Guerreiro", tipo: "morto-vivo", vida_max: 18, armadura: 13, iniciativa: 1, dado_ataque: "1d8+1", habilidades: "Imune a veneno. Fr\xE1gil a dano de esmagamento.", notas: "", vida_escondida: false },
+  { nome: "Lobo Cinzento", tipo: "besta", vida_max: 14, armadura: 12, iniciativa: 3, dado_ataque: "2d4+2", habilidades: "Derrubar: o alvo faz um teste de For\xE7a ou cai.", notas: "", vida_escondida: false },
+  { nome: "Gruk, o Quebra-Ossos", tipo: "chefe", vida_max: 65, armadura: 16, iniciativa: 1, dado_ataque: "2d8+4", habilidades: "F\xFAria: ao chegar a metade da vida, ataca duas vezes.", notas: "Chefe da emboscada na estrada.", vida_escondida: true }
+];
+var EFEITOS = [
+  { nome: "Veneno", tipo: "dano", valor: 3, duracao: 3, dano_tipo: "veneno", descricao: "Perde vida no in\xEDcio de cada turno.", acumula: true, termina_cura: false, visivel: true },
+  { nome: "Sangramento", tipo: "dano", valor: 2, duracao: 4, dano_tipo: "cortante", descricao: "Cessa se o alvo receber cura.", acumula: false, termina_cura: true, visivel: true },
+  { nome: "Queimadura", tipo: "dano", valor: 4, duracao: 2, dano_tipo: "fogo", descricao: "Chamas que se apagam sozinhas.", acumula: false, termina_cura: false, visivel: true },
+  { nome: "Gelo", tipo: "dano", valor: 2, duracao: 2, dano_tipo: "gelo", descricao: "Reduz o movimento pela metade.", acumula: false, termina_cura: false, visivel: true },
+  { nome: "Regenera\xE7\xE3o", tipo: "cura", valor: 3, duracao: 3, dano_tipo: "", descricao: "Recupera vida no in\xEDcio de cada turno.", acumula: false, termina_cura: false, visivel: true },
+  { nome: "B\xEAn\xE7\xE3o", tipo: "bonus", valor: 0, duracao: 5, dano_tipo: "", descricao: "+1d4 em testes de ataque e resist\xEAncia.", acumula: false, termina_cura: false, visivel: true },
+  { nome: "Paralisia", tipo: "controle", valor: 0, duracao: 1, dano_tipo: "", descricao: "N\xE3o pode agir no pr\xF3prio turno.", acumula: false, termina_cura: false, visivel: true }
+];
+var ITENS = [
+  { nome: "Espada Curta", tipo: "arma", dado_dano: "1d6", bonus: "+1", efeitos: "", descricao: "L\xE2mina leve e bem balanceada." },
+  { nome: "Po\xE7\xE3o de Cura", tipo: "consum\xEDvel", dado_dano: "2d4+2", bonus: "", efeitos: "Recupera vida", descricao: "L\xEDquido rubro que cheira a ervas." },
+  { nome: "Escudo de Carvalho", tipo: "armadura", dado_dano: "", bonus: "+2 armadura", efeitos: "", descricao: "Madeira refor\xE7ada com tiras de ferro." },
+  { nome: "Anel da Vig\xEDlia", tipo: "m\xE1gico", dado_dano: "", bonus: "+1 iniciativa", efeitos: "Brilha perto de mortos-vivos", descricao: "Um aro de prata fria." }
+];
+var novoCombate = () => ({ ativo: false, rodada: 1, turno: 0, combatentes: [] });
+function garantir(d) {
+  if (d.monstros) return d;
+  Object.assign(d.seq, { m: MONSTROS.length, e: EFEITOS.length, i: ITENS.length, n: 0, r: 0, d: 0, cb: 0, ef: 0 });
+  d.monstros = MONSTROS.map((x, i) => ({ id: i + 1, ...x }));
+  d.efeitos = EFEITOS.map((x, i) => ({ id: i + 1, ...x }));
+  d.itens = ITENS.map((x, i) => ({ id: i + 1, ...x }));
+  Object.assign(d, { notas: [], rolagens: [], diario: [], combate: novoCombate(), rev: 0 });
+  for (const c of d.chars) c.itens ||= [];
+  return d;
+}
+var diario = (d, tipo, texto) => {
+  d.diario.push({ id: ++d.seq.d, tipo, texto, criado_em: agora() });
+  if (d.diario.length > 500) d.diario.splice(0, d.diario.length - 500);
+};
+var RE_DADO = /^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/;
+var limpa = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, "");
+var dadoOk = (s) => {
+  const x = limpa(s);
+  return x.length <= 60 && RE_DADO.test(x);
+};
+function rolarExpr(expr, mult = 1) {
+  const s = limpa(expr);
+  if (!s || s.length > 60 || !RE_DADO.test(s)) erro(400, "Express\xE3o inv\xE1lida. Exemplos: 1d20, 2d6+3, d8+1d4+2.");
+  let total = 0, qtdDados = 0;
+  const partes = [];
+  for (const t of s.match(/[+-]?(\d*d\d+|\d+)/g)) {
+    const sinal = t[0] === "-" ? -1 : 1, corpo2 = t.replace(/^[+-]/, "");
+    if (corpo2.includes("d")) {
+      const [n, l] = corpo2.split("d"), q = n === "" ? 1 : Number(n), lados = Number(l);
+      if (q < 1 || q > 100 || lados < 2 || lados > 1e3) erro(400, "Use de 1 a 100 dados, com 2 a 1000 lados.");
+      qtdDados += q;
+      if (qtdDados > 200) erro(400, "Dados demais numa rolagem (m\xE1ximo 200).");
+      const rolls = Array.from({ length: q }, () => rnd(lados)), sub = sinal * rolls.reduce((a, b) => a + b, 0);
+      total += sub;
+      partes.push({ termo: t, rolls, sub });
+    } else {
+      const v = sinal * Number(corpo2);
+      if (Math.abs(v) > 99999) erro(400, "B\xF4nus grande demais.");
+      total += v;
+      partes.push({ termo: t, sub: v });
+    }
+  }
+  return { total: total * mult, bruto: total, partes };
+}
+function rolagem(d, b) {
+  const modo = ["normal", "vantagem", "desvantagem"].includes(b.modo) ? b.modo : "normal";
+  const mult = int(b.mult ?? 1, 1, 10) ?? erro(400, "Multiplicador de 1 a 10.");
+  const r1 = rolarExpr(b.expr, mult);
+  let escolhido = r1, descartado = null;
+  if (modo !== "normal") {
+    const r2 = rolarExpr(b.expr, mult), primeiro = modo === "vantagem" ? r1.total >= r2.total : r1.total <= r2.total;
+    escolhido = primeiro ? r1 : r2;
+    descartado = (primeiro ? r2 : r1).total;
+  }
+  const item = { id: ++d.seq.r, expr: limpa(b.expr), modo, mult, rotulo: txt(b.rotulo, 40), total: escolhido.total, partes: escolhido.partes, descartado, criado_em: agora() };
+  d.rolagens.push(item);
+  if (d.rolagens.length > 200) d.rolagens.splice(0, d.rolagens.length - 200);
+  return item;
+}
+var ordenar = (cb) => {
+  const atual = cb.combatentes[cb.turno]?.cid;
+  cb.combatentes.sort((a, b) => (b.iniciativa ?? -1e9) - (a.iniciativa ?? -1e9) || a.cid - b.cid);
+  cb.turno = atual ? Math.max(0, cb.combatentes.findIndex((x) => x.cid === atual)) : 0;
+};
+var renumerar = (cb, base) => {
+  const grupo = cb.combatentes.filter((x) => x.tipo === "monstro" && x.base === base).sort((a, b) => a.cid - b.cid);
+  grupo.forEach((x, i) => {
+    x.nome = grupo.length > 1 ? `${base} ${i + 1}` : base;
+  });
+};
+function ajustar(d, comb, tipo, valor, descricao, atributo = "vida", tolerante = false) {
+  if (comb.tipo === "jogador") return aplicarAjuste(d, comb.ref, atributo, tipo, valor, descricao, "mestre", tolerante);
+  if (atributo !== "vida") erro(400, "Monstros s\xF3 t\xEAm vida.");
+  const antes = comb.vida_atual, depois = clamp(antes + (tipo === "dano" ? -valor : valor), 0, comb.vida_max);
+  if (depois === antes) {
+    if (tolerante) return null;
+    erro(400, tipo === "dano" ? "A vida j\xE1 est\xE1 em zero." : "A vida j\xE1 est\xE1 no m\xE1ximo.");
+  }
+  comb.vida_atual = depois;
+  diario(d, "combate", `${comb.nome}: ${tipo === "dano" ? "perdeu" : "recuperou"} ${Math.abs(depois - antes)} de vida (${antes} \u2192 ${depois})${descricao ? ` \u2014 ${descricao}` : ""}`);
+  return true;
+}
+function iniciarTurno(d, comb) {
+  const fim = [];
+  for (const e of comb.efeitos) {
+    const v = e.valor * (e.pilhas || 1);
+    if (v > 0 && (e.tipo === "dano" || e.tipo === "cura")) ajustar(d, comb, e.tipo, v, `Efeito: ${e.nome}`, "vida", true);
+    if (--e.restante <= 0) fim.push(e);
+  }
+  if (fim.length) {
+    comb.efeitos = comb.efeitos.filter((e) => !fim.includes(e));
+    diario(d, "efeito", `${comb.nome}: terminou ${fim.map((e) => e.nome).join(", ")}`);
+  }
+}
+function acaoCombate(d, b) {
+  const cb = d.combate;
+  const achar = (cid) => cb.combatentes.find((x) => x.cid === Number(cid)) || erro(404, "Combatente n\xE3o encontrado.");
+  const novoCid = () => ++d.seq.cb;
+  switch (b.acao) {
+    case "adicionar": {
+      if (b.tipo === "jogador") {
+        const ch = d.chars.find((x) => x.id === Number(b.ref)) || erro(404, "Personagem n\xE3o encontrado.");
+        if (cb.combatentes.some((x) => x.tipo === "jogador" && x.ref === ch.id)) erro(409, `${ch.nome} j\xE1 est\xE1 no combate.`);
+        cb.combatentes.push({ cid: novoCid(), tipo: "jogador", ref: ch.id, nome: ch.nome, iniciativa: null, bonus_ini: 0, efeitos: [] });
+      } else if (b.tipo === "monstro") {
+        const mo = d.monstros.find((x) => x.id === Number(b.ref)) || erro(404, "Monstro n\xE3o encontrado.");
+        const q = int(b.quantidade ?? 1, 1, 20) ?? erro(400, "Quantidade de 1 a 20.");
+        for (let i = 0; i < q; i++) cb.combatentes.push({ cid: novoCid(), tipo: "monstro", ref: mo.id, base: mo.nome, nome: mo.nome, iniciativa: null, bonus_ini: mo.iniciativa, vida_atual: mo.vida_max, vida_max: mo.vida_max, armadura: mo.armadura, escondida: mo.vida_escondida, efeitos: [] });
+        renumerar(cb, mo.nome);
+        diario(d, "combate", `${q > 1 ? q + "\xD7 " : ""}${mo.nome} entrou no combate`);
+      } else erro(400, "Tipo inv\xE1lido.");
+      break;
+    }
+    case "adicionar_jogadores": {
+      for (const ch of d.chars) if (!cb.combatentes.some((x) => x.tipo === "jogador" && x.ref === ch.id)) cb.combatentes.push({ cid: novoCid(), tipo: "jogador", ref: ch.id, nome: ch.nome, iniciativa: null, bonus_ini: 0, efeitos: [] });
+      break;
+    }
+    case "iniciativa": {
+      achar(b.cid).iniciativa = int(b.valor, -99, 999) ?? erro(400, "Iniciativa de -99 a 999.");
+      if (cb.ativo) ordenar(cb);
+      break;
+    }
+    case "rolar_iniciativa": {
+      for (const x of cb.combatentes) if (x.iniciativa === null || b.todos === true) x.iniciativa = rnd(20) + (x.bonus_ini || 0);
+      ordenar(cb);
+      diario(d, "combate", "Iniciativa rolada");
+      break;
+    }
+    case "iniciar": {
+      if (!cb.combatentes.length) erro(400, "Adicione combatentes antes de iniciar.");
+      Object.assign(cb, { ativo: true, rodada: 1, turno: 0 });
+      ordenar(cb);
+      cb.turno = 0;
+      diario(d, "combate", `Combate iniciado com ${cb.combatentes.length} combatentes`);
+      break;
+    }
+    case "proximo": {
+      if (!cb.ativo) erro(400, "Inicie o combate primeiro.");
+      const n = cb.combatentes.length;
+      let tent = 0, cur;
+      do {
+        cb.turno++;
+        if (cb.turno >= n) {
+          cb.turno = 0;
+          cb.rodada++;
+          diario(d, "combate", `Rodada ${cb.rodada}`);
+        }
+        cur = cb.combatentes[cb.turno];
+      } while (cur.tipo === "monstro" && cur.vida_atual === 0 && ++tent < n);
+      iniciarTurno(d, cur);
+      break;
+    }
+    case "encerrar": {
+      d.combate = novoCombate();
+      diario(d, "combate", `Combate encerrado na rodada ${cb.rodada}`);
+      break;
+    }
+    case "remover": {
+      const i = cb.combatentes.findIndex((x2) => x2.cid === Number(b.cid));
+      if (i < 0) erro(404, "Combatente n\xE3o encontrado.");
+      const [x] = cb.combatentes.splice(i, 1);
+      if (x.base) renumerar(cb, x.base);
+      if (i < cb.turno) cb.turno--;
+      if (cb.turno >= cb.combatentes.length) cb.turno = 0;
+      break;
+    }
+    case "vida_escondida": {
+      const x = achar(b.cid);
+      if (x.tipo !== "monstro") erro(400, "S\xF3 vale para monstros.");
+      x.escondida = b.valor === true;
+      break;
+    }
+    case "dano":
+    case "cura": {
+      const x = achar(b.cid), v = int(b.valor, 1, 99999) ?? erro(400, "Informe um valor de 1 a 99999.");
+      ajustar(d, x, b.acao, v, txt(b.descricao, 300), x.tipo === "jogador" && b.atributo === "sanidade" ? "sanidade" : "vida");
+      if (b.acao === "cura") x.efeitos = x.efeitos.filter((e) => !e.termina_cura);
+      break;
+    }
+    case "efeito": {
+      const x = achar(b.cid), ef = d.efeitos.find((e) => e.id === Number(b.efeito_id)) || erro(404, "Efeito n\xE3o encontrado.");
+      const dur = int(b.duracao ?? ef.duracao, 1, 99) ?? erro(400, "Dura\xE7\xE3o de 1 a 99 turnos.");
+      const ja = x.efeitos.find((e) => e.efeito_id === ef.id);
+      if (ja) {
+        ja.restante = dur;
+        if (ef.acumula) ja.pilhas = (ja.pilhas || 1) + 1;
+      } else x.efeitos.push({ eid: ++d.seq.ef, efeito_id: ef.id, nome: ef.nome, tipo: ef.tipo, dano_tipo: ef.dano_tipo, valor: ef.valor, restante: dur, pilhas: 1, visivel: ef.visivel, termina_cura: ef.termina_cura });
+      diario(d, "efeito", `${ef.nome} aplicado em ${x.nome} por ${dur} ${dur === 1 ? "turno" : "turnos"}`);
+      break;
+    }
+    case "tirar_efeito": {
+      const x = achar(b.cid);
+      x.efeitos = x.efeitos.filter((e) => e.eid !== Number(b.eid));
+      break;
+    }
+    default:
+      erro(400, "A\xE7\xE3o inv\xE1lida.");
+  }
+  return vistaMestre(d);
+}
+var num = (v, min, max, rot) => int(v, min, max) ?? erro(400, `${rot} deve ser um n\xFAmero de ${min} a ${max}.`);
+var um = (v, lista, padrao) => lista.includes(v) ? v : padrao;
+var nome = (v, rot = "o nome") => txt(v, 40) || erro(400, `Informe ${rot}.`);
+var dado = (v, rot) => {
+  const s = limpa(v);
+  if (s && !dadoOk(s)) erro(400, `${rot}: use algo como 1d6+2.`);
+  return s;
+};
+var CRUD = {
+  monstros: { seq: "m", valida: (b) => ({ nome: nome(b.nome), tipo: um(b.tipo, ["chefe", "goblin", "morto-vivo", "besta", "outro"], "outro"), vida_max: num(b.vida_max, 1, 99999, "Vida m\xE1xima"), armadura: num(b.armadura ?? 0, 0, 99, "Armadura"), iniciativa: num(b.iniciativa ?? 0, -20, 50, "B\xF4nus de iniciativa"), dado_ataque: dado(b.dado_ataque, "Dado de ataque"), habilidades: txt(b.habilidades, 1e3), notas: txt(b.notas, 1e3), vida_escondida: b.vida_escondida === true }) },
+  efeitos: { seq: "e", valida: (b) => ({ nome: nome(b.nome), tipo: um(b.tipo, ["dano", "cura", "bonus", "controle"], "dano"), valor: num(b.valor ?? 0, 0, 9999, "Valor por turno"), duracao: num(b.duracao ?? 1, 1, 99, "Dura\xE7\xE3o"), dano_tipo: txt(b.dano_tipo, 30), descricao: txt(b.descricao, 300), acumula: b.acumula === true, termina_cura: b.termina_cura === true, visivel: b.visivel !== false }) },
+  itens: { seq: "i", valida: (b) => ({ nome: nome(b.nome), tipo: um(b.tipo, ["arma", "armadura", "consum\xEDvel", "m\xE1gico", "tesouro", "outro"], "outro"), dado_dano: dado(b.dado_dano, "Dado de dano"), bonus: txt(b.bonus, 30), efeitos: txt(b.efeitos, 200), descricao: txt(b.descricao, 400) }) },
+  notas: { seq: "n", valida: (b) => ({ titulo: txt(b.titulo, 60) || erro(400, "Informe o t\xEDtulo."), texto: txt(b.texto, 4e3), etiquetas: (Array.isArray(b.etiquetas) ? b.etiquetas : []).map((t) => txt(t, 20)).filter(Boolean).slice(0, 6) }) }
+};
+function inventarioDe(d, ch) {
+  return (ch.itens || []).map((s) => {
+    const it = d.itens.find((i) => i.id === s.item_id);
+    return it ? { ...it, qtd: s.qtd } : null;
+  }).filter(Boolean);
+}
+var AREAS = ["combate", "dados", "monstros", "efeitos", "itens", "notas", "mesa"];
+async function rotasMesa({ seg, m, u, db, corpo: corpo2, mutate: mutate2, json: json2 }) {
+  const [a, b, c] = seg;
+  if (!AREAS.includes(a)) return null;
+  if (u.r !== "mestre") erro(403, "Apenas o mestre pode fazer isso.");
+  if (a === "mesa" && b === "historico" && m === "GET") {
+    return json2(200, { eventos: db.hist.slice(-300).reverse().map((h) => comNome(db, h)), rolagens: db.rolagens.slice(-200).reverse(), diario: db.diario.slice(-300).reverse() });
+  }
+  if (a === "dados" && m === "POST") {
+    const body = await corpo2();
+    return json2(200, await mutate2((d) => rolagem(d, body)));
+  }
+  if (a === "combate" && m === "POST") {
+    const body = await corpo2();
+    return json2(200, { combate: await mutate2((d) => acaoCombate(d, body)) });
+  }
+  if (a === "itens" && (b === "entregar" || b === "recolher") && m === "POST") {
+    const body = await corpo2(), qtd = num(body.qtd ?? 1, 1, 99, "Quantidade");
+    return json2(200, await mutate2((d) => {
+      const ch = d.chars.find((x) => x.id === Number(body.char_id)) || erro(404, "Personagem n\xE3o encontrado.");
+      const it = d.itens.find((x) => x.id === Number(body.item_id)) || erro(404, "Item n\xE3o encontrado.");
+      ch.itens ||= [];
+      const slot = ch.itens.find((s) => s.item_id === it.id);
+      if (b === "entregar") {
+        if (slot) slot.qtd = Math.min(999, slot.qtd + qtd);
+        else ch.itens.push({ item_id: it.id, qtd });
+        diario(d, "item", `${qtd}\xD7 ${it.nome} entregue a ${ch.nome}`);
+      } else {
+        if (!slot) erro(400, `${ch.nome} n\xE3o tem ${it.nome}.`);
+        slot.qtd -= qtd;
+        if (slot.qtd <= 0) ch.itens = ch.itens.filter((s) => s !== slot);
+        diario(d, "item", `${it.nome} recolhido de ${ch.nome}`);
+      }
+      return inventarioDe(d, ch);
+    }));
+  }
+  const cad = CRUD[a];
+  if (!cad) return null;
+  const lista = (d) => d[a];
+  if (!b && m === "POST") {
+    const body = await corpo2(), dados = cad.valida(body);
+    return json2(201, await mutate2((d) => {
+      const x = { id: ++d.seq[cad.seq], ...dados, criado_em: agora() };
+      lista(d).push(x);
+      return x;
+    }));
+  }
+  const id = Number(b);
+  if (Number.isInteger(id) && m === "PATCH") {
+    const body = await corpo2();
+    return json2(200, await mutate2((d) => {
+      const x = lista(d).find((y) => y.id === id) || erro(404, "N\xE3o encontrado.");
+      Object.assign(x, cad.valida({ ...x, ...body }));
+      return x;
+    }));
+  }
+  if (Number.isInteger(id) && m === "DELETE") {
+    return json2(200, await mutate2((d) => {
+      if (!lista(d).some((y) => y.id === id)) erro(404, "N\xE3o encontrado.");
+      d[a] = lista(d).filter((y) => y.id !== id);
+      if (a === "itens") for (const ch of d.chars) ch.itens = (ch.itens || []).filter((s) => s.item_id !== id);
+      return { ok: true };
+    }));
+  }
+  return null;
+}
+function limparChar(d, id) {
+  const cb = d.combate;
+  if (!cb) return;
+  const atual = cb.combatentes[cb.turno]?.cid;
+  cb.combatentes = cb.combatentes.filter((x) => !(x.tipo === "jogador" && x.ref === id));
+  cb.turno = Math.max(0, cb.combatentes.findIndex((x) => x.cid === atual));
+}
+function vistaMestre(d) {
+  const cb = d.combate;
+  return {
+    ativo: cb.ativo,
+    rodada: cb.rodada,
+    turno: cb.turno,
+    combatentes: cb.combatentes.map((x) => {
+      if (x.tipo !== "jogador") return x;
+      const ch = d.chars.find((c) => c.id === x.ref);
+      return { ...x, nome: ch.nome, foto_url: ch.foto_url, vida_atual: ch.vida_atual, vida_max: ch.vida_max, sanidade_atual: ch.sanidade_atual, sanidade_max: ch.sanidade_max, estados: estados(ch) };
+    })
+  };
+}
+function dadosMestre(d) {
+  return {
+    combate: vistaMestre(d),
+    mesa: { monstros: d.monstros, efeitos: d.efeitos, itens: d.itens, notas: d.notas, inventarios: Object.fromEntries(d.chars.map((c) => [c.id, inventarioDe(d, c)])) }
+  };
+}
+var estadoMonstro = (x) => x.vida_atual <= 0 ? "Ca\xEDdo" : x.vida_atual >= x.vida_max ? "Ileso" : x.vida_atual / x.vida_max <= 0.3 ? "Cr\xEDtico" : "Ferido";
+function dadosJogador(d, u) {
+  const cb = d.combate, ver = d.config.jogadores_veem_outros, eu = d.chars.find((c) => c.id === u.c);
+  let combate = null;
+  if (cb.combatentes.length) {
+    combate = {
+      ativo: cb.ativo,
+      rodada: cb.rodada,
+      atual: cb.ativo ? cb.combatentes[cb.turno]?.cid ?? null : null,
+      ordem: cb.combatentes.map((x) => {
+        const meu = x.tipo === "jogador" && x.ref === u.c;
+        const o = { cid: x.cid, tipo: x.tipo, nome: x.nome, iniciativa: x.iniciativa, eu: meu, efeitos: x.efeitos.filter((e) => e.visivel || meu).map((e) => ({ nome: e.nome, tipo: e.tipo, dano_tipo: e.dano_tipo, restante: e.restante, pilhas: e.pilhas })) };
+        if (x.tipo === "jogador") {
+          const ch = d.chars.find((c) => c.id === x.ref);
+          o.foto_url = ch.foto_url;
+          if (meu || ver) {
+            o.vida_atual = ch.vida_atual;
+            o.vida_max = ch.vida_max;
+          }
+        } else if (x.escondida) o.estado = estadoMonstro(x);
+        else {
+          o.vida_atual = x.vida_atual;
+          o.vida_max = x.vida_max;
+          o.estado = estadoMonstro(x);
+        }
+        return o;
+      })
+    };
+  }
+  return { combate, inventario: eu ? inventarioDe(d, eu) : [] };
+}
+
+// netlify/src/api.mjs
+var DUMMY = import_bcryptjs.default.hashSync("x", 10);
+var MESTRE_HASH = "$2a$10$LnSvZ6UZU3QVxb3BENuUlOYJRXeZ.5Rzib2LGrdkDpABfjrE6Yf8C";
+var KEY = "banco";
+var SESSAO_MS = 12 * 3600 * 1e3;
+var LOGIN_MAX = () => Number(process.env.LOGIN_MAX) || 10;
+var store = () => globalThis.__RPG_STORE__ || getStore({ name: "grimorio", consistency: "strong" });
 var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
 function novoDb() {
-  const mk = (id, nome, senha, va, vm, sa, sm) => ({ id, nome, senha_hash: import_bcryptjs.default.hashSync(senha, 10), foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, criado_em: (/* @__PURE__ */ new Date()).toISOString() });
+  const mk = (id, nome2, senha, va, vm, sa, sm) => ({ id, nome: nome2, senha_hash: import_bcryptjs.default.hashSync(senha, 10), foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, criado_em: (/* @__PURE__ */ new Date()).toISOString() });
   return {
-    segredo: crypto.randomBytes(32).toString("hex"),
+    segredo: crypto2.randomBytes(32).toString("hex"),
     mestre_hash: null,
     config: { jogadores_veem_outros: true },
     seq: { c: 2, h: 0 },
@@ -2673,12 +3079,14 @@ async function load() {
     await s.setJSON(KEY, novoDb(), { onlyIfNew: true });
     r = await s.getWithMetadata(KEY, { type: "json" });
   }
+  garantir(r.data);
   return r;
 }
 async function mutate(fn) {
   for (let i = 0; i < 8; i++) {
     const { data, etag } = await load();
     const res = fn(data);
+    data.rev = (data.rev || 0) + 1;
     const w = await store().setJSON(KEY, data, { onlyIfMatch: etag });
     if (w.modified) return res;
     await sleep2(30 + Math.random() * 70);
@@ -2687,9 +3095,9 @@ async function mutate(fn) {
 }
 var eq = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
-  return x.length === y.length && crypto.timingSafeEqual(x, y);
+  return x.length === y.length && crypto2.timingSafeEqual(x, y);
 };
-var hmac = (db, b) => crypto.createHmac("sha256", db.segredo).update(b).digest("base64url");
+var hmac = (db, b) => crypto2.createHmac("sha256", db.segredo).update(b).digest("base64url");
 var sign = (db, p) => {
   const b = Buffer.from(JSON.stringify(p)).toString("base64url");
   return b + "." + hmac(db, b);
@@ -2711,24 +3119,9 @@ function verify(db, tok) {
   }
 }
 var cookies = (h = "") => Object.fromEntries(h.split(";").map((s) => s.trim().split(/=(.*)/s).slice(0, 2)).filter((x) => x[0]));
-function estados(c) {
-  const e = [];
-  if (c.vida_atual === 0) e.push("caido");
-  else if (c.vida_atual / c.vida_max < 0.3) e.push("ferido");
-  if (c.sanidade_atual === 0) e.push("enlouquecido");
-  else if (c.sanidade_atual / c.sanidade_max < 0.3) e.push("abalado");
-  return e;
-}
-var pub = (c) => ({ id: c.id, nome: c.nome, foto_url: c.foto_url, vida_atual: c.vida_atual, vida_max: c.vida_max, sanidade_atual: c.sanidade_atual, sanidade_max: c.sanidade_max, estados: estados(c) });
 var ordem = (a, b) => a.nome.localeCompare(b.nome, "pt-BR");
-var int = (v, min, max) => {
-  const n = typeof v === "string" && /^-?\d+$/.test(v.trim()) ? Number(v) : v;
-  return Number.isInteger(n) && n >= min && n <= max ? n : null;
-};
-var txt = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
 var senhaOk = (s) => typeof s === "string" && s.length >= 4 && s.length <= 72;
 var visiveis = (db, u) => (u.r === "mestre" ? db.chars : db.chars.filter((c) => c.id === u.c || db.config.jogadores_veem_outros)).slice().sort(ordem).map(pub);
-var comNome = (db, h) => ({ ...h, nome: db.chars.find((c) => c.id === h.character_id)?.nome || "?" });
 var json = (status, obj, headers = {}) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 var EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 function tipoReal(b) {
@@ -2772,7 +3165,7 @@ async function rotear(req, context) {
     return new Response(r.data, { headers: { "content-type": r.metadata?.tipo || "image/png", "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" } });
   }
   if (a === "status") return json(200, { mestre_configurado: !!(process.env.SENHA_MESTRE || MESTRE_HASH) });
-  if (a === "public" && b === "characters") return json(200, db.chars.slice().sort(ordem).map(({ id, nome, foto_url }) => ({ id, nome, foto_url })));
+  if (a === "public" && b === "characters") return json(200, db.chars.slice().sort(ordem).map(({ id, nome: nome2, foto_url }) => ({ id, nome: nome2, foto_url })));
   if (a === "login" && m === "POST") {
     const lim = db.rl[ip];
     if (lim && lim.ate > Date.now() && lim.n >= LOGIN_MAX()) return json(429, { erro: "Muitas tentativas. Aguarde alguns minutos." });
@@ -2827,21 +3220,24 @@ async function rotear(req, context) {
     }
   }
   if (a === "sync" && m === "GET") {
-    const ev = url.searchParams.get("ev");
+    const ev = url.searchParams.get("ev"), rev = Number(url.searchParams.get("rev"));
     const eventos = ev === null ? [] : db.hist.filter((h) => h.id > Number(ev) && (u.r === "mestre" || h.character_id === u.c)).slice(-100).reverse().map((h) => comNome(db, h));
-    return json(200, { chars: visiveis(db, u), config: db.config, eventos, lastEv: db.seq.h });
+    const novo = rev !== db.rev;
+    return json(200, { rev: db.rev, lastEv: db.seq.h, eventos, ...novo ? { dados: { chars: visiveis(db, u), config: db.config, ...u.r === "mestre" ? dadosMestre(db) : dadosJogador(db, u) } } : {} });
   }
   if (a === "eventos" && m === "GET") {
     soMestre();
     return json(200, db.hist.slice(-100).reverse().map((h) => comNome(db, h)));
   }
+  const mesa = await rotasMesa({ seg, m, u, db, corpo: () => corpo(req), mutate, json });
+  if (mesa) return mesa;
   if (a === "characters") {
     if (!b && m === "GET") return json(200, visiveis(db, u));
     if (!b && m === "POST") {
       soMestre();
       const body = await corpo(req);
-      const nome = txt(body.nome, 40), vm = int(body.vida_max, 1, 9999), sm = int(body.sanidade_max, 1, 9999);
-      if (!nome) erro(400, "Informe o nome.");
+      const nome2 = txt(body.nome, 40), vm = int(body.vida_max, 1, 9999), sm = int(body.sanidade_max, 1, 9999);
+      if (!nome2) erro(400, "Informe o nome.");
       if (!senhaOk(body.senha)) erro(400, "A senha deve ter de 4 a 72 caracteres.");
       if (vm === null || sm === null) erro(400, "Vida e sanidade m\xE1ximas devem ser n\xFAmeros de 1 a 9999.");
       const va = body.vida_atual === void 0 || body.vida_atual === "" ? vm : int(body.vida_atual, 0, vm);
@@ -2849,8 +3245,8 @@ async function rotear(req, context) {
       if (va === null || sa === null) erro(400, "Valores iniciais devem ficar entre 0 e o m\xE1ximo.");
       const hash = import_bcryptjs.default.hashSync(body.senha, 10);
       const novo = await mutate((d) => {
-        if (d.chars.some((x) => x.nome.toLowerCase() === nome.toLowerCase())) erro(409, "J\xE1 existe um personagem com esse nome.");
-        const ch = { id: ++d.seq.c, nome, senha_hash: hash, foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, criado_em: (/* @__PURE__ */ new Date()).toISOString() };
+        if (d.chars.some((x) => x.nome.toLowerCase() === nome2.toLowerCase())) erro(409, "J\xE1 existe um personagem com esse nome.");
+        const ch = { id: ++d.seq.c, nome: nome2, senha_hash: hash, foto_url: null, vida_atual: va, vida_max: vm, sanidade_atual: sa, sanidade_max: sm, itens: [], criado_em: (/* @__PURE__ */ new Date()).toISOString() };
         d.chars.push(ch);
         return pub(ch);
       });
@@ -2862,19 +3258,19 @@ async function rotear(req, context) {
       if (!c && m === "PATCH") {
         soMestre();
         const body = await corpo(req), cur = find(db);
-        const nome = body.nome === void 0 ? cur.nome : txt(body.nome, 40);
+        const nome2 = body.nome === void 0 ? cur.nome : txt(body.nome, 40);
         const vm = body.vida_max === void 0 ? cur.vida_max : int(body.vida_max, 1, 9999);
         const sm = body.sanidade_max === void 0 ? cur.sanidade_max : int(body.sanidade_max, 1, 9999);
-        if (!nome || vm === null || sm === null) erro(400, "Dados inv\xE1lidos.");
+        if (!nome2 || vm === null || sm === null) erro(400, "Dados inv\xE1lidos.");
         const junto = body.curar_junto === true;
         const aj = (atual, antigo, novo) => Math.max(0, Math.min(novo, junto && novo > antigo ? atual + (novo - antigo) : atual));
         return json(200, await mutate((d) => {
           const ch = find(d);
           if (!ch) erro(404, "Personagem n\xE3o encontrado.");
-          if (d.chars.some((x) => x.id !== id && x.nome.toLowerCase() === nome.toLowerCase())) erro(409, "J\xE1 existe um personagem com esse nome.");
+          if (d.chars.some((x) => x.id !== id && x.nome.toLowerCase() === nome2.toLowerCase())) erro(409, "J\xE1 existe um personagem com esse nome.");
           ch.vida_atual = aj(ch.vida_atual, ch.vida_max, vm);
           ch.sanidade_atual = aj(ch.sanidade_atual, ch.sanidade_max, sm);
-          ch.nome = nome;
+          ch.nome = nome2;
           ch.vida_max = vm;
           ch.sanidade_max = sm;
           return pub(ch);
@@ -2884,6 +3280,7 @@ async function rotear(req, context) {
         soMestre();
         const foto = find(db).foto_url;
         await mutate((d) => {
+          limparChar(d, id);
           d.chars = d.chars.filter((x) => x.id !== id);
           d.hist = d.hist.filter((h) => h.character_id !== id);
         });
@@ -2907,21 +3304,7 @@ async function rotear(req, context) {
         if (!["dano", "cura"].includes(tipo)) erro(400, "Tipo inv\xE1lido.");
         if (valor === null) erro(400, "Informe um valor inteiro entre 1 e 9999.");
         const descricao = txt(body.descricao, 300), autor = u.r === "mestre" ? "mestre" : "jogador";
-        return json(200, await mutate((d) => {
-          const ch = find(d);
-          if (!ch) erro(404, "Personagem n\xE3o encontrado.");
-          const antes = ch[atributo + "_atual"], max = ch[atributo + "_max"];
-          const depois = Math.max(0, Math.min(max, antes + (tipo === "dano" ? -valor : valor)));
-          if (depois === antes) {
-            const nm = atributo === "vida" ? "A vida" : "A sanidade";
-            erro(400, tipo === "dano" ? `${nm} j\xE1 est\xE1 em zero.` : `${nm} j\xE1 est\xE1 no m\xE1ximo.`);
-          }
-          ch[atributo + "_atual"] = depois;
-          const h = { id: ++d.seq.h, character_id: id, atributo, delta: depois - antes, descricao, antes, depois, autor, criado_em: (/* @__PURE__ */ new Date()).toISOString() };
-          d.hist.push(h);
-          if (d.hist.length > 1500) d.hist.splice(0, d.hist.length - 1500);
-          return { personagem: pub(ch), evento: comNome(d, h) };
-        }));
+        return json(200, await mutate((d) => aplicarAjuste(d, id, atributo, tipo, valor, descricao, autor)));
       }
       if (c === "foto" && m === "POST") {
         let file;
@@ -2934,14 +3317,14 @@ async function rotear(req, context) {
         if (file.size > 5 * 1024 * 1024) erro(413, "A imagem passa de 5 MB.");
         const buf = Buffer.from(await file.arrayBuffer()), tipo = tipoReal(buf);
         if (!tipo) erro(415, "Use uma imagem JPG, PNG ou WEBP.");
-        const nome = crypto.randomBytes(16).toString("hex") + "." + EXT[tipo];
-        await store().set("foto/" + nome, buf, { metadata: { tipo } });
+        const nome2 = crypto2.randomBytes(16).toString("hex") + "." + EXT[tipo];
+        await store().set("foto/" + nome2, buf, { metadata: { tipo } });
         let antiga;
         const res = await mutate((d) => {
           const ch = find(d);
           if (!ch) erro(404, "Personagem n\xE3o encontrado.");
           antiga = ch.foto_url;
-          ch.foto_url = "/uploads/" + nome;
+          ch.foto_url = "/uploads/" + nome2;
           return pub(ch);
         });
         await apagaFoto(antiga);
