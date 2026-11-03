@@ -30,7 +30,7 @@ async function telaMestre() {
 function desenhaAbas() {
   $$('.aba').forEach((b) => { const on = b.dataset.aba === U.aba; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; });
   const cb = S.combate, selo = $('#selo-combate');
-  if (selo) { selo.hidden = !cb.combatentes.length; selo.textContent = cb.ativo ? 'R' + cb.rodada : cb.combatentes.length; }
+  if (selo && cb) { selo.hidden = !cb.combatentes.length; selo.textContent = cb.ativo ? 'R' + cb.rodada : cb.combatentes.length; }
   const c = $('#conteudo'); if (c) c.setAttribute('aria-labelledby', 'aba-' + U.aba);
 }
 const assinatura = (el) => {

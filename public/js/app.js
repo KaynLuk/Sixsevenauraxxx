@@ -257,6 +257,8 @@ function aplicar(r) {
 async function carregarTudo() {
   S.rev = null; S.lastEv = null;
   const r = await api('/api/sync'); aplicar(r);
+  // site novo falando com uma função antiga (publicada sem a pasta netlify/functions atualizada): resposta sem "dados"
+  if (S.me.papel === 'mestre' && !(S.combate && S.mesa)) throw new Error('A função do servidor está desatualizada. Publique o projeto inteiro de novo, incluindo a pasta netlify/functions.');
   if (S.me.papel === 'mestre') S.feed = await api('/api/eventos');
   S.lastEv = r.lastEv; // linha de base: só avisa o que acontecer daqui para frente
 }
