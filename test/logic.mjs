@@ -29,11 +29,10 @@ class Cli {
 const foto = (buf, tipo = 'image/png') => { const f = new FormData(); f.append('foto', new Blob([buf], { type: tipo }), 'a.png'); return f; };
 
 const M = new Cli('2.2.2.2'), A = new Cli('3.3.3.3', true), B = new Cli('4.4.4.4');
-console.log('\nPrimeiro acesso e login');
-t('antes de configurar: status mostra mestre não configurado', (await M.req('GET', '/api/status')).d.mestre_configurado === false);
+console.log('\nLogin');
+t('status mostra mestre configurado (senha fixa)', (await M.req('GET', '/api/status')).d.mestre_configurado === true);
 t('rota protegida sem login → 401', (await new Cli().req('GET', '/api/characters')).s === 401);
-t('senha curta no primeiro acesso → 400', (await M.req('POST', '/api/login/mestre', { senha: '123' })).s === 400);
-t('mestre define a senha e entra', (await M.req('POST', '/api/login/mestre', { senha: 'segredo-mestre' })).s === 200);
+t('mestre entra com a senha mestre123', (await M.req('POST', '/api/login/mestre', { senha: 'mestre123' })).s === 200);
 t('senha errada do mestre → 401', (await new Cli('9.9.9.9').req('POST', '/api/login/mestre', { senha: 'outra' })).s === 401);
 const lista = (await new Cli().req('GET', '/api/public/characters')).d;
 t('lista pública com 2 personagens do seed, sem dados sensíveis', lista.length === 2 && !('senha_hash' in lista[0]) && !('vida_atual' in lista[0]));
@@ -106,7 +105,7 @@ t('6 danos simultâneos: nenhum se perde', R.every((x) => x.s === 200) && (await
 let cod = 0; const X = new Cli('8.8.8.8');
 for (let i = 0; i < 10 && cod !== 429; i++) cod = (await X.req('POST', '/api/login/mestre', { senha: 'errada' + i })).s;
 t('tentativas erradas repetidas → 429', cod === 429);
-t('outro IP não é afetado', (await new Cli('7.7.7.7').req('POST', '/api/login/mestre', { senha: 'segredo-mestre' })).s === 200);
+t('outro IP não é afetado', (await new Cli('7.7.7.7').req('POST', '/api/login/mestre', { senha: 'mestre123' })).s === 200);
 
 console.log(`\n${ok} ok, ${falhas} falhas`);
 process.exit(falhas ? 1 : 0);

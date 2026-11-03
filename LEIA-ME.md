@@ -5,7 +5,7 @@ Controle de **Vida** e **Sanidade** da mesa de RPG. Roda **só no Netlify**, sem
 ## Publicar (arrastando a pasta)
 1. Descompacte o zip.
 2. Entre em https://app.netlify.com (logado), vá em **Projects → Add new project → Deploy manually** e **arraste a pasta inteira** (a que contém `public`, `netlify` e `netlify.toml`).
-3. Abra o endereço que o Netlify gerar. No **primeiro acesso**, clique em *Entrar como mestre* e **crie a senha do mestre** (mínimo 6 caracteres). Quem chegar primeiro define a senha, então faça isso logo após publicar.
+3. Abra o endereço que o Netlify gerar e clique em *Entrar como mestre*. A senha padrão do mestre é `mestre123` (para trocar, defina a variável `SENHA_MESTRE`, veja abaixo).
 4. Confira em **Functions** (menu do site) se aparece a função `api`. Se **não aparecer**, o Netlify não aceitou as funções pelo arrastar: use o caminho abaixo.
 
 ## Publicar pelo GitHub (se o arrastar não ativar a função)
@@ -17,7 +17,7 @@ Ou, com o Netlify CLI: `npm i -g netlify-cli`, `netlify login`, `netlify deploy 
 Já vêm 2: **Eleanor Voss** (senha `eleanor123`) e **Tobias Crane** (senha `tobias123`). Exclua ou troque as senhas no painel do mestre antes de jogar de verdade.
 
 ## Variáveis opcionais (Site configuration → Environment variables)
-- `SENHA_MESTRE`: se definida, é a senha do mestre (em vez da criada no primeiro acesso).
+- `SENHA_MESTRE`: se definida, substitui a senha padrão do mestre (`mestre123`).
 - `LOGIN_MAX`: tentativas de login por IP a cada 15 min (padrão 10).
 
 ## Como funciona a atualização
