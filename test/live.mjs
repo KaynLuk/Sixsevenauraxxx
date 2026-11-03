@@ -9,7 +9,7 @@ const call = async (m, p, body, form) => {
 const ok = (n, c, x) => console.log(`${c ? '  ✔' : '  ✘ FALHOU'} ${n}${c ? '' : ' ' + JSON.stringify(x)}`);
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
 let r = await call('GET', '/api/status'); ok('GET /api/status via redirect', r.s === 200, r);
-r = await call('POST', '/api/login/mestre', { senha: 'segredo-mestre' }); ok('mestre entra / define senha', r.s === 200, r);
+r = await call('POST', '/api/login/mestre', { senha: 'mestre123' }); ok('mestre entra', r.s === 200, r);
 r = await call('GET', '/api/characters'); ok('lista personagens', r.s === 200 && r.d.length >= 2, r);
 const id = r.d[0].id, vida = r.d[0].vida_atual;
 r = await call('POST', `/api/characters/${id}/ajuste`, { atributo: 'vida', tipo: 'dano', valor: 1, descricao: 'teste ao vivo' }); ok('dano com descrição', r.s === 200 && r.d.personagem.vida_atual === vida - 1, r);

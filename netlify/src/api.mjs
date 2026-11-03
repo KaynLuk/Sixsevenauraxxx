@@ -5,6 +5,8 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
 const DUMMY = bcrypt.hashSync('x', 10);
+// Senha do mestre (hash bcrypt). Para trocar, defina a variável SENHA_MESTRE no Netlify.
+const MESTRE_HASH = '$2a$10$LnSvZ6UZU3QVxb3BENuUlOYJRXeZ.5Rzib2LGrdkDpABfjrE6Yf8C';
 const KEY = 'banco';
 const SESSAO_MS = 12 * 3600 * 1000;
 const LOGIN_MAX = () => Number(process.env.LOGIN_MAX) || 10;
@@ -108,7 +110,7 @@ async function rotear(req, context) {
     if (!r) return new Response('Não encontrado', { status: 404 });
     return new Response(r.data, { headers: { 'content-type': r.metadata?.tipo || 'image/png', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
   }
-  if (a === 'status') return json(200, { mestre_configurado: !!(process.env.SENHA_MESTRE || db.mestre_hash) });
+  if (a === 'status') return json(200, { mestre_configurado: !!(process.env.SENHA_MESTRE || MESTRE_HASH) });
   if (a === 'public' && b === 'characters') return json(200, db.chars.slice().sort(ordem).map(({ id, nome, foto_url }) => ({ id, nome, foto_url })));
 
   // ----- login -----
@@ -129,13 +131,7 @@ async function rotear(req, context) {
       const senha = typeof body.senha === 'string' ? body.senha.slice(0, 100) : '';
       let ok = false;
       if (process.env.SENHA_MESTRE) ok = eq(senha, process.env.SENHA_MESTRE);
-      else if (db.mestre_hash) ok = bcrypt.compareSync(senha, db.mestre_hash);
-      else { // primeiro acesso: quem chega primeiro define a senha do mestre
-        if (senha.length < 6) return json(400, { erro: 'Crie uma senha de pelo menos 6 caracteres.' });
-        const hash = bcrypt.hashSync(senha, 10);
-        await mutate((d) => { if (d.mestre_hash) erro(409, 'A senha do mestre já foi definida.'); d.mestre_hash = hash; });
-        ok = true;
-      }
+      else ok = bcrypt.compareSync(senha, MESTRE_HASH);
       if (!ok) return falha('Senha do mestre incorreta.');
       return json(200, { ok: true, papel: 'mestre' }, { 'set-cookie': setCookie(sign(db, { r: 'mestre', exp: Date.now() + SESSAO_MS })) });
     }

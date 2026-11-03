@@ -1,2 +1,0 @@
-/api/*      /.netlify/functions/api?r=:splat           200!
-/uploads/*  /.netlify/functions/api?r=uploads/:splat  200!

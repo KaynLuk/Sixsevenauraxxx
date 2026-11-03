@@ -2639,6 +2639,7 @@ var getStore = (input, options) => {
 var import_bcryptjs = __toESM(require_bcryptjs(), 1);
 import crypto from "node:crypto";
 var DUMMY = import_bcryptjs.default.hashSync("x", 10);
+var MESTRE_HASH = "$2a$10$LnSvZ6UZU3QVxb3BENuUlOYJRXeZ.5Rzib2LGrdkDpABfjrE6Yf8C";
 var KEY = "banco";
 var SESSAO_MS = 12 * 3600 * 1e3;
 var LOGIN_MAX = () => Number(process.env.LOGIN_MAX) || 10;
@@ -2770,7 +2771,7 @@ async function rotear(req, context) {
     if (!r) return new Response("N\xE3o encontrado", { status: 404 });
     return new Response(r.data, { headers: { "content-type": r.metadata?.tipo || "image/png", "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" } });
   }
-  if (a === "status") return json(200, { mestre_configurado: !!(process.env.SENHA_MESTRE || db.mestre_hash) });
+  if (a === "status") return json(200, { mestre_configurado: !!(process.env.SENHA_MESTRE || MESTRE_HASH) });
   if (a === "public" && b === "characters") return json(200, db.chars.slice().sort(ordem).map(({ id, nome, foto_url }) => ({ id, nome, foto_url })));
   if (a === "login" && m === "POST") {
     const lim = db.rl[ip];
@@ -2790,16 +2791,7 @@ async function rotear(req, context) {
       const senha = typeof body.senha === "string" ? body.senha.slice(0, 100) : "";
       let ok = false;
       if (process.env.SENHA_MESTRE) ok = eq(senha, process.env.SENHA_MESTRE);
-      else if (db.mestre_hash) ok = import_bcryptjs.default.compareSync(senha, db.mestre_hash);
-      else {
-        if (senha.length < 6) return json(400, { erro: "Crie uma senha de pelo menos 6 caracteres." });
-        const hash = import_bcryptjs.default.hashSync(senha, 10);
-        await mutate((d) => {
-          if (d.mestre_hash) erro(409, "A senha do mestre j\xE1 foi definida.");
-          d.mestre_hash = hash;
-        });
-        ok = true;
-      }
+      else ok = import_bcryptjs.default.compareSync(senha, MESTRE_HASH);
       if (!ok) return falha("Senha do mestre incorreta.");
       return json(200, { ok: true, papel: "mestre" }, { "set-cookie": setCookie(sign(db, { r: "mestre", exp: Date.now() + SESSAO_MS })) });
     }
