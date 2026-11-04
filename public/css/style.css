@@ -310,3 +310,16 @@ body.flash-san::before{background:rgba(110,120,255,.5)}
 }
 @media(max-width:560px){body{font-size:18px}.turno{grid-template-columns:36px 44px minmax(0,1fr);gap:8px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.fagulha{display:none}}
+
+/* biblioteca: mapas, atributos e miniaturas */
+.mapa{margin:8px 0}.mapa img{display:block;width:100%;max-height:420px;object-fit:contain;background:#1c0e07;border:3px solid var(--o4);border-radius:6px;box-shadow:inset 0 0 12px #000}
+.mapa figcaption{margin-top:4px;font-size:.85rem;color:var(--t3)}.mapa a{color:var(--s3)}
+.miniaturas{display:flex;gap:6px;overflow-x:auto;padding:6px 2px}
+.miniaturas button{flex:none;width:80px;height:56px;min-height:44px;padding:0;border:2px solid var(--p4);border-radius:5px;overflow:hidden;background:#000;cursor:pointer;touch-action:manipulation}
+.miniaturas button[aria-pressed=true]{border-color:var(--o2);box-shadow:0 0 8px rgba(227,174,62,.8)}
+.miniaturas img{width:100%;height:100%;object-fit:cover;display:block}
+.stats4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+.stats4>div{text-align:center;padding:8px 4px;border-radius:6px;background:linear-gradient(180deg,var(--m4),var(--m3));color:var(--p1)}
+.stats4 b{display:block;font:700 1.3rem var(--f-tit);color:var(--o1);overflow-wrap:anywhere}.stats4 span{font-size:.72rem;color:var(--p3);letter-spacing:.06em;text-transform:uppercase}
+.lista-simples{list-style:none;margin:0;padding:0}
+@media(max-width:560px){.stats4{grid-template-columns:repeat(2,1fr)}}

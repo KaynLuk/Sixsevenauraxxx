@@ -126,6 +126,7 @@ let ms = await mesa();
 t('bestiário, efeitos e itens de exemplo vêm prontos', ms.monstros.length >= 4 && ms.efeitos.length >= 7 && ms.itens.length >= 4);
 const mon = await post(M, '/api/monstros', { nome: 'Troll da Ponte', tipo: 'besta', vida_max: 40, armadura: 14, iniciativa: -1, dado_ataque: '2d6+4', vida_escondida: true });
 t('mestre cria monstro', mon.s === 201 && mon.d.id > 0 && mon.d.vida_escondida === true);
+t('monstro com tipo novo (dragão) é aceito e tipo inválido vira outro', (await post(M, '/api/monstros', { nome: 'Dragão Teste', tipo: 'dragão', vida_max: 99, dado_ataque: '4d10+6' })).d.tipo === 'dragão' && (await post(M, '/api/monstros', { nome: 'Coisa Teste', tipo: 'xyz', vida_max: 9 })).d.tipo === 'outro');
 t('monstro com dado inválido → 400', (await post(M, '/api/monstros', { nome: 'X', vida_max: 5, dado_ataque: 'xyz' })).s === 400);
 t('mestre edita monstro (vida 50)', (await M.req('PATCH', `/api/monstros/${mon.d.id}`, { vida_max: 50 })).d.vida_max === 50);
 t('jogador não cria monstro/efeito/item/nota → 403', (await post(A, '/api/monstros', { nome: 'X', vida_max: 5 })).s === 403 && (await post(A, '/api/efeitos', { nome: 'X' })).s === 403 && (await post(A, '/api/notas', { titulo: 'X' })).s === 403);

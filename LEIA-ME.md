@@ -42,3 +42,9 @@ Senhas com bcrypt; sessão em cookie `httpOnly` assinado, 12 h; trocar a senha d
 - `npm install`, `npm run build` (empacota `netlify/src/api.mjs` em `netlify/functions/api.mjs`, que é o arquivo publicado).
 - `npm run dev` abre o site em http://localhost:8899 com dados em memória (sem Netlify); `npm test` roda os testes da lógica; `npx netlify-cli dev` simula o Netlify localmente (`node test/live.mjs http://localhost:8888`).
 - Depois de editar `netlify/src/api.mjs`, rode `npm run build` antes de publicar.
+
+
+## Biblioteca (áreas, monstros e mapas)
+A aba **Biblioteca** traz **106 áreas** e **109 monstros** prontos (níveis 1 a 10), com busca e filtros. Cada área mostra um mapa de referência do tipo de lugar (dá para trocar pelas miniaturas), encontros sugeridos, gancho de aventura e botões para **invocar o encontro no combate** ou **salvar como nota**. Cada monstro tem **Usar no combate** e **Adicionar ao meu bestiário**.
+
+Os **60 mapas** são reais (plantas de cidades e castelos, cartas marinhas, mapas polares, cartas celestes…), de domínio público ou licença aberta (Wikimedia Commons), sem imagens geradas. O autor, a licença e o link de cada um aparecem na tela e em `CREDITOS-MAPAS.md`. Para trocar ou acrescentar, edite `public/js/mapas.js` (mapas) e `public/js/biblioteca.js` (áreas e monstros) e rode `node test/biblioteca.mjs` para validar.

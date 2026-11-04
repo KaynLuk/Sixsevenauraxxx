@@ -3,8 +3,8 @@
 'use strict';
 const { $, $$, esc, fmt, S, api, comCarga, toast, icone, alquimia, token, chipsEstado, chipEfeito, barra, eventoHtml, pergaminho, divisor, modal, modalAjuste, abrirCorte, carregarTudo, conectar, montar } = window.G;
 
-const ABAS = [['combate', 'Combate'], ['jogadores', 'Jogadores'], ['dados', 'Dados'], ['monstros', 'Monstros'], ['efeitos', 'Efeitos'], ['itens', 'Itens'], ['historico', 'Histórico e Notas']];
-const U = { aba: 'combate', alvo: null, qtd: 1, calc: { expr: '1d20', mult: 1, modo: 'normal', res: null }, rolagens: [], sel: {}, filtro: { monstros: 'todos', efeitos: 'todos', itens: 'todos' }, busca: { monstros: '', efeitos: '', itens: '' }, hist: null, histFiltro: 'tudo', notaTag: '', invChar: null };
+const ABAS = [['combate', 'Combate'], ['jogadores', 'Jogadores'], ['dados', 'Dados'], ['monstros', 'Monstros'], ['efeitos', 'Efeitos'], ['itens', 'Itens'], ['biblioteca', 'Biblioteca'], ['historico', 'Histórico e Notas']];
+const U = { aba: 'combate', alvo: null, qtd: 1, calc: { expr: '1d20', mult: 1, modo: 'normal', res: null }, rolagens: [], sel: {}, filtro: { monstros: 'todos', efeitos: 'todos', itens: 'todos' }, busca: { monstros: '', efeitos: '', itens: '' }, hist: null, histFiltro: 'tudo', notaTag: '', invChar: null, bib: { modo: 'areas', filtro: { areas: 'todos', monstros: 'todos' }, nv: { areas: 0, monstros: 0 }, busca: { areas: '', monstros: '' }, sel: { areas: null, monstros: null }, mapa: {} } };
 const MODOS = [['normal', 'Normal'], ['vantagem', 'Vantagem'], ['desvantagem', 'Desvantagem']];
 const cartao = (tit, html, id = '') => `<section class="cartao" ${id ? `aria-labelledby="${id}"` : ''}><h3 ${id ? `id="${id}"` : ''}>${tit}</h3>${html}</section>`;
 const cab = (t, sub, acoes = '') => `<header class="cab-tela"><div><h2 id="titulo-tela" tabindex="-1">${t}</h2><p>${sub}</p></div><div class="cab-acoes">${acoes}</div></header>${divisor}`;
@@ -145,10 +145,10 @@ function telaDados() {
 }
 
 // ---------- catálogos: Monstros, Efeitos, Itens (lista + editor) ----------
-const TIPOS_MON = [['chefe', 'Chefe'], ['goblin', 'Goblin'], ['morto-vivo', 'Morto-vivo'], ['besta', 'Besta'], ['outro', 'Outro']];
+const TIPOS_MON = [['chefe', 'Chefe'], ['goblin', 'Goblin'], ['morto-vivo', 'Morto-vivo'], ['besta', 'Besta'], ['humanoide', 'Humanoide'], ['elemental', 'Elemental'], ['demônio', 'Demônio'], ['dragão', 'Dragão'], ['construto', 'Construto'], ['aberração', 'Aberração'], ['planta', 'Planta'], ['fada', 'Fada'], ['outro', 'Outro']];
 const CAT = {
   monstros: {
-    titulo: 'Monstros', sub: 'Bestiário do mestre', um: 'monstro', filtroK: 'tipo', filtros: [['todos', 'Todos'], ['chefe', 'Chefes'], ['goblin', 'Goblins'], ['morto-vivo', 'Mortos-vivos'], ['besta', 'Bestas'], ['outro', 'Outros']],
+    titulo: 'Monstros', sub: 'Bestiário do mestre', um: 'monstro', filtroK: 'tipo', filtros: [['todos', 'Todos'], ...TIPOS_MON],
     linha: (x) => `<b>${esc(x.nome)}</b><small>${esc(TIPOS_MON.find((t) => t[0] === x.tipo)?.[1] || x.tipo)} · vida ${x.vida_max} · armadura ${x.armadura}${x.dado_ataque ? ' · ' + esc(x.dado_ataque) : ''}</small>`,
     novo: { nome: '', tipo: 'goblin', vida_max: 10, armadura: 10, iniciativa: 0, dado_ataque: '', habilidades: '', notas: '', vida_escondida: false },
     campos: [['nome', 'Nome', 'texto', { max: 40 }], ['tipo', 'Tipo', 'sel', { op: TIPOS_MON }], ['vida_max', 'Vida máxima', 'num', { min: 1, max: 99999 }], ['armadura', 'Armadura', 'num', { min: 0, max: 99 }], ['iniciativa', 'Bônus de iniciativa', 'num', { min: -20, max: 50 }], ['dado_ataque', 'Dado de ataque', 'texto', { ph: 'Ex.: 1d6+3', max: 60 }], ['habilidades', 'Habilidades', 'area', { max: 1000 }], ['notas', 'Notas do mestre', 'area', { max: 1000 }], ['vida_escondida', 'Vida escondida dos jogadores', 'sw']],
@@ -230,7 +230,65 @@ function telaHistorico() {
         <div class="acoes esq"><button class="btn peq" data-m="nota-edit" data-id="${n.id}">Editar</button><button class="btn peq fantasma" data-m="nota-del" data-id="${n.id}">Apagar</button></div></article>`).join('') : vazio('Nenhuma nota. Anote ganchos, nomes e segredos da campanha.')}`, 'h-notas')}</div>`;
 }
 
-const TELAS = { combate: telaCombate, jogadores: telaJogadores, dados: telaDados, monstros: () => telaCatalogo('monstros'), efeitos: () => telaCatalogo('efeitos'), itens: () => telaCatalogo('itens'), historico: telaHistorico };
+// ---------- Biblioteca: áreas e monstros prontos, com mapas ----------
+const BIB = () => window.BIBLIOTECA;
+const mapasDe = (bioma) => (window.BIBLIOTECA_MAPAS || []).filter((m) => m.bioma === bioma);
+const rotBib = (v) => (v === 'todos' ? 'Todos' : v.charAt(0).toUpperCase() + v.slice(1));
+const sinal = (n) => (n > 0 ? '+' + n : String(n));
+function mapaDaArea(a) {
+  const ms = mapasDe(a.bioma); if (!ms.length) return null;
+  const i = BIB().areas.filter((x) => x.bioma === a.bioma).findIndex((x) => x.nome === a.nome);
+  return ms.find((m) => m.id === U.bib.mapa[a.nome]) || ms[i % ms.length]; // cada área começa com um mapa do seu tipo de lugar; dá para trocar
+}
+function bibVisiveis() {
+  const b = U.bib, m = b.modo, lista = BIB()[m], chave = m === 'areas' ? 'bioma' : 'tipo', f = b.filtro[m], nv = b.nv[m], q = b.busca[m].toLowerCase();
+  return { lista, chave, vis: lista.filter((x) => (f === 'todos' || x[chave] === f) && (!nv || x.nv === nv) && (!q || x.nome.toLowerCase().includes(q))) };
+}
+// traz um monstro da biblioteca para o bestiário (se ainda não estiver) e devolve o id dele
+async function garantirMonstro(nome) {
+  const lib = window.BIBLIOTECA.monstros.find((x) => x.nome === nome); if (!lib) throw new Error(`“${nome}” não está na biblioteca.`);
+  const ja = S.mesa.monstros.find((x) => x.nome.toLowerCase() === nome.toLowerCase()); if (ja) return ja.id;
+  const r = await cadastro('POST', 'monstros', null, { nome: lib.nome, tipo: lib.tipo, vida_max: lib.vida_max, armadura: lib.armadura, iniciativa: lib.iniciativa, dado_ataque: lib.dado_ataque, habilidades: lib.habilidades, notas: `Ameaça ${lib.nv} (biblioteca)`, vida_escondida: lib.vida_escondida });
+  return r.id;
+}
+async function usarNoCombate(nome, qtd, btn) {
+  try { const id = await comCarga(btn, () => garantirMonstro(nome)); const r = await cmb('adicionar', { tipo: 'monstro', ref: id, quantidade: qtd }); if (r) toast(`${nome} entrou no combate.`); } catch (e) { toast(e.message, 'erro'); }
+}
+function detalheMonstroBib(x) {
+  const ja = S.mesa.monstros.some((y) => y.nome.toLowerCase() === x.nome.toLowerCase());
+  return cartao(esc(x.nome), `<div class="chips"><span class="chip estado">${esc(rotBib(x.tipo))}</span><span class="chip buff">Ameaça ${x.nv}</span>${x.vida_escondida ? '<span class="chip controle">Vida escondida</span>' : ''}</div>
+    <div class="stats4"><div><b class="num">${x.vida_max}</b><span>Vida</span></div><div><b class="num">${x.armadura}</b><span>Armadura</span></div><div><b class="num">${sinal(x.iniciativa)}</b><span>Iniciativa</span></div><div><b>${esc(x.dado_ataque)}</b><span>Ataque</span></div></div>
+    <p class="tit-menor">Habilidades</p><p>${esc(x.habilidades)}</p>
+    <div class="linha" style="align-items:end"><label class="campo"><span>Quantidade</span><input id="bib-qtd" type="number" min="1" max="20" value="1" inputmode="numeric"></label><button class="btn perigo" data-m="bib-usar" data-id="${esc(x.nome)}" style="flex:0 0 auto">Usar no combate</button></div>
+    <div class="acoes esq"><button class="btn peq ${ja ? 'fantasma' : 'ouro'}" data-m="bib-add" data-id="${esc(x.nome)}" ${ja ? 'disabled' : ''}>${ja ? 'Já está no seu bestiário' : 'Adicionar ao meu bestiário'}</button></div>`, 'h-bibd');
+}
+function detalheAreaBib(a) {
+  const mapa = mapaDaArea(a), ms = mapasDe(a.bioma);
+  const encs = a.enc.map((n) => { const m = BIB().monstros.find((x) => x.nome === n); return `<li class="efeito-linha"><span><b>${esc(n)}</b>${m ? ` <small class="mudo">ameaça ${m.nv} · vida ${m.vida_max}</small>` : ''}</span><button class="btn peq azul" data-m="bib-usar" data-id="${esc(n)}">Usar</button></li>`; }).join('');
+  return cartao(esc(a.nome), `<div class="chips"><span class="chip estado">${esc(a.bioma)}</span><span class="chip buff">Nível ${a.nv}</span></div>
+    ${mapa ? `<figure class="mapa"><a href="${esc(mapa.arquivo)}" target="_blank" rel="noopener" aria-label="Abrir o mapa em tamanho grande"><img src="${esc(mapa.arquivo)}" alt="Mapa de referência: ${esc(mapa.titulo)}" loading="lazy"></a>
+      <figcaption>${esc(mapa.titulo)} — ${esc(mapa.autor)}, ${esc(mapa.licenca)}. <a href="${esc(mapa.pagina)}" target="_blank" rel="noopener">Fonte</a></figcaption></figure>
+      ${ms.length > 1 ? `<div class="miniaturas" role="group" aria-label="Outros mapas deste tipo de lugar">${ms.map((x) => `<button data-m="bib-mapa" data-id="${esc(a.nome)}" data-k="${esc(x.id)}" aria-pressed="${x.id === mapa.id}" aria-label="${esc(x.titulo)}"><img src="${esc(x.arquivo)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}` : ''}
+    <p>${esc(a.desc)}</p><p class="tit-menor">Encontros sugeridos</p><ul class="lista-simples">${encs}</ul>
+    <div class="acoes esq"><button class="btn perigo" data-m="bib-encontro" data-id="${esc(a.nome)}">Invocar encontro completo</button><button class="btn peq" data-m="bib-nota" data-id="${esc(a.nome)}">Salvar como nota</button></div>
+    <p class="tit-menor">Gancho de aventura</p><p>${esc(a.gancho)}</p>
+    <p class="dica">Quer um mapa de batalha? <a href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent('battle map ' + a.nome)}" target="_blank" rel="noopener">Procurar na internet</a></p>`, 'h-bibd');
+}
+function telaBiblioteca() {
+  const b = U.bib, m = b.modo, { lista, chave, vis } = bibVisiveis(), f = b.filtro[m];
+  const sel = vis.find((x) => x.nome === b.sel[m]) || vis[0] || null; b.sel[m] = sel ? sel.nome : null;
+  const opcoes = ['todos', ...new Set(lista.map((x) => x[chave]))];
+  const esq = cartao(m === 'areas' ? 'Áreas' : 'Monstros', `<div class="seg ouro" role="group" aria-label="Tipo de biblioteca" style="margin-bottom:10px">${seg([['areas', 'Áreas'], ['monstros', 'Monstros']], m, 'bib-modo')}</div>
+    <label class="so-leitor" for="bib-busca">Buscar</label><input class="busca" id="bib-busca" type="search" value="${esc(b.busca[m])}" placeholder="Buscar…" autocomplete="off">
+    <label class="campo" style="margin:0 0 8px"><span>${m === 'areas' ? 'Nível sugerido' : 'Ameaça'}</span><select id="bib-nv"><option value="0">Todos</option>${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${b.nv[m] === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></label>
+    <div class="filtros" role="group" aria-label="Filtros">${opcoes.map((v) => `<button data-m="bib-filtro" data-v="${esc(v)}" aria-pressed="${v === f}">${esc(rotBib(v))}</button>`).join('')}</div>
+    <p class="mudo" style="margin:0 0 6px">${vis.length} de ${lista.length}</p>
+    <ul class="lista">${vis.map((x) => `<li><button class="item" data-m="bib-sel" data-id="${esc(x.nome)}" aria-current="${!!sel && x.nome === sel.nome}"><b>${esc(x.nome)}</b><small>${m === 'areas' ? `${esc(x.bioma)} · nível ${x.nv}` : `${esc(rotBib(x.tipo))} · ameaça ${x.nv} · vida ${x.vida_max}`}</small></button></li>`).join('') || '<li class="vazio">Nada encontrado.</li>'}</ul>`, 'h-bib');
+  const dir = sel ? (m === 'areas' ? detalheAreaBib(sel) : detalheMonstroBib(sel)) : cartao('Detalhes', vazio('Escolha um item da lista.'), 'h-bibd');
+  return cab('Biblioteca', `${BIB().areas.length} áreas e ${BIB().monstros.length} monstros prontos para usar, com mapas de referência`, `<button class="btn ouro" data-m="bib-sortear">Sortear ${m === 'areas' ? 'área' : 'monstro'}</button>`) + `<div class="cols c2">${esq}${dir}</div>`;
+}
+
+const TELAS = { biblioteca: telaBiblioteca, combate: telaCombate, jogadores: telaJogadores, dados: telaDados, monstros: () => telaCatalogo('monstros'), efeitos: () => telaCatalogo('efeitos'), itens: () => telaCatalogo('itens'), historico: telaHistorico };
 
 // ---------- ações ----------
 async function cmb(acao, extra = {}, btn) {
@@ -256,6 +314,21 @@ function lerForm(f, kind) {
 }
 
 const A = {
+  'bib-modo': (t) => { U.bib.modo = t.dataset.v; desenhaTela(); },
+  'bib-filtro': (t) => { U.bib.filtro[U.bib.modo] = t.dataset.v; desenhaTela(); },
+  'bib-sel': (t) => { U.bib.sel[U.bib.modo] = t.dataset.id; desenhaTela(); },
+  'bib-mapa': (t) => { U.bib.mapa[t.dataset.id] = t.dataset.k; desenhaTela(); },
+  'bib-sortear': () => { const { vis } = bibVisiveis(); if (vis.length) { U.bib.sel[U.bib.modo] = vis[Math.floor(Math.random() * vis.length)].nome; desenhaTela(); } },
+  'bib-add': async (t) => { try { await comCarga(t, () => garantirMonstro(t.dataset.id)); desenhaTela(); toast('Adicionado ao seu bestiário.'); } catch (e) { toast(e.message, 'erro'); } },
+  'bib-usar': (t) => usarNoCombate(t.dataset.id, Number($('#bib-qtd')?.value) || 1, t),
+  'bib-encontro': async (t) => {
+    const a = BIB().areas.find((x) => x.nome === t.dataset.id);
+    try { await comCarga(t, async () => { for (const n of a.enc) { const id = await garantirMonstro(n); const r = await api('/api/combate', { method: 'POST', body: { acao: 'adicionar', tipo: 'monstro', ref: id, quantidade: 1 } }); S.combate = r.combate; } }); desenhaAbas(); toast(`Encontro de “${a.nome}” no combate.`); } catch (e) { toast(e.message, 'erro'); }
+  },
+  'bib-nota': async (t) => {
+    const a = BIB().areas.find((x) => x.nome === t.dataset.id);
+    try { await comCarga(t, () => cadastro('POST', 'notas', null, { titulo: a.nome, texto: `${a.desc}\n\nEncontros: ${a.enc.join(', ')}\nGancho: ${a.gancho}`, etiquetas: [a.bioma, 'Área'] })); toast('Salvo nas suas notas.'); } catch (e) { toast(e.message, 'erro'); }
+  },
   pular: () => { const c = $('#titulo-tela'); if (c) c.focus(); },
   sair: () => window.G.sair(),
   fonte: (t) => { document.documentElement.dataset.fonte = t.dataset.v; try { localStorage.setItem('fonte', t.dataset.v); } catch { /* sem armazenamento */ } $$('[data-m=fonte]').forEach((b) => b.setAttribute('aria-pressed', b === t)); },
@@ -415,11 +488,13 @@ document.addEventListener('input', (e) => {
   if (t.id === 'qtd') U.qtd = Number(t.value) || 1;
   else if (t.id === 'expr') U.calc.expr = t.value;
   else if (t.id?.startsWith('busca-')) { U.busca[t.id.slice(6)] = t.value; desenhaTela(); }
+  else if (t.id === 'bib-busca') { U.bib.busca[U.bib.modo] = t.value; desenhaTela(); }
 });
 document.addEventListener('change', (e) => {
   const t = e.target; if (!$('#tela')?.contains(t)) return;
   if (t.id === 'atq' && t.value) { U.calc.expr = t.value; $('#expr').value = t.value; }
   else if (t.id === 'inv-char') { U.invChar = Number(t.value); desenhaTela(); }
+  else if (t.id === 'bib-nv') { U.bib.nv[U.bib.modo] = Number(t.value); desenhaTela(); }
 });
 document.addEventListener('submit', async (e) => {
   const f = e.target.closest('[data-cat]'); if (!f) return;

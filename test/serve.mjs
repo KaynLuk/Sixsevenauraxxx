@@ -13,7 +13,7 @@ globalThis.__RPG_STORE__ = {
   async delete(k) { mem.delete(k); },
 };
 const { default: api } = await import('../netlify/functions/api.mjs');
-const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml' };
+const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/uploads/')) {
